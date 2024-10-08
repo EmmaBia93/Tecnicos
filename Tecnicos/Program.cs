@@ -13,7 +13,8 @@ using Newtonsoft.Json.Linq;
 using System.Windows.Forms;
 using System.IO;
 using DotNetEnv;
-using SpeedTest.Net;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.StartPanel;
+
 
 class Program
 {
@@ -46,7 +47,7 @@ class Program
             Console.WriteLine("║ 3) Marcar/Desmarcar Tarjeta de Red               ║");
             Console.WriteLine("║ 4) Realizar Compliance                           ║");
             Console.WriteLine("║ 5) Establecer Hora                               ║");
-            Console.WriteLine("║ 6) Test de Velocidad                             ║");
+            Console.WriteLine("║ 6) Detectar Cantidad de Clientes                 ║");
             Console.WriteLine("║ 0) Salir                                         ║");
 
            
@@ -68,7 +69,7 @@ class Program
                     CargarBackup();
                     break;
                 case "3":
-                    TarjetaRed();
+                    MenuTarjetaRed();   
                     break;
                 case "4":
 
@@ -101,7 +102,9 @@ class Program
                     }
 
                     break;
-                
+                case "6":
+                    CantidadClientes();
+                    break;
                 case "0":
                     Console.ForegroundColor = ConsoleColor.Yellow;
                     Console.WriteLine("Saliendo...");
@@ -371,7 +374,7 @@ class Program
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("[+] Se Fijara la Tarjeta...");
             Console.ResetColor();
-            FijarTarjeta();
+            MenuTarjetaRed();
 
             Console.WriteLine("[+] Se hara prueba de conexion con la antena:\n");
             Task.Delay(10000);
@@ -532,7 +535,81 @@ class Program
     }
 
 
-    static void TarjetaRed()
+    static void MenuTarjetaRed()
+    {
+        
+        while (true)
+            
+        {
+            Console.Clear();
+            Console.WriteLine("MENU TARJETA DE RED\n");
+            Console.ForegroundColor = ConsoleColor.Blue;
+            Console.WriteLine("1) Fijar / Desmarcar ip (default)");
+            Console.WriteLine("2) Fijar ip en una ip Custom");
+            Console.WriteLine("3) Volver al menu principal\n");
+            Console.ResetColor();
+            string op = Console.ReadLine();
+
+            switch (op) {
+                case "1":
+                    TarjetaRed();
+                    break;
+                case "2":
+                    Console.Clear();
+                    string pattern = @"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$";
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("Ingrese una IP de Dispositivo");
+                    
+                    string ip = Console.ReadLine();
+                    Console.WriteLine("Ingrese el prefijo de red (24 o 22)");
+                    string prefix = Console.ReadLine();
+
+                    Console.ResetColor();
+
+                    if (Regex.IsMatch(ip, pattern)) {
+                        string[] parts = ip.Split('.');
+                        parts[3] = "153";
+                        ip = string.Join(".", parts);
+                        if (prefix == "24" || prefix == "22")
+                        {
+                            string mascara = prefix == "24" ? "255.255.255.0" : "255.255.252.0";
+                            TarjetaRed(ip, mascara);
+                        }
+                        else
+                        {
+                            Console.ForegroundColor= ConsoleColor.Red;
+                            Console.WriteLine("Se Ingreso un prefijo de red no valido. Presione una tecla para continuar");
+                            Console.ResetColor();
+                            Console.ReadKey();
+                        }
+                        
+
+
+                    }
+                    else
+                    {
+                        Console.ForegroundColor= ConsoleColor.Red;
+                        Console.WriteLine("IP No es válida. Presione una tecla para continuar...");
+                        Console.ReadKey();
+                    }
+                    break;
+                case "3":
+                    return;
+                default:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine("Opción no válida. Presione una tecla para continuar...");
+                    Console.ReadKey();
+                    break;
+
+            }
+        }
+
+
+
+    }
+
+
+    static void TarjetaRed(string ip="192.168.1.53", string mascarared="255.255.255.0")
     {
         Console.Clear();
         string nombreInterfaz = "Ether0";
@@ -558,7 +635,7 @@ class Program
 
         if (usandoDHCP)
         {
-            FijarTarjeta();
+            FijarTarjeta(ip,mascarared);
             Console.WriteLine("El comando no se ejecutó correctamente, intente nuevamente...");
             Console.ReadKey();
         }
@@ -571,9 +648,9 @@ class Program
     }
 
 
-    static bool FijarTarjeta()
+    static bool FijarTarjeta(string ip, string mascaradered)
     {
-        string comando = "interface ip set address \"Ether0\" static 192.168.1.153 255.255.255.0";
+        string comando = $"interface ip set address \"Ether0\" static {ip} {mascaradered}";
         ProcessStartInfo psi = new ProcessStartInfo
         {
             FileName = "netsh",
@@ -688,6 +765,113 @@ class Program
 
        
      
+    }
+
+    static void CantidadClientes ()
+    {
+        Console.Clear();
+        string pattern = @"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$";
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("Ingrese la IP del Panel: ");
+        Console.ResetColor();
+        string host = Console.ReadLine();
+
+        if (Regex.IsMatch(host, pattern))
+        {
+            try
+            {
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine("Ingrese la Contraseña del dispositivo: ");
+                Console.ResetColor();
+                string password = ReadPassword();
+                string user = "ubnt";
+                int port = 23;
+                string command= "wstalist |grep \"mac\" |wc -l ; mca-status | grep \"deviceName=\" | sed -n 's/.*deviceName=\\([^,]*\\).*/\\1/p'";
+
+                using (var client = new SshClient(host, port,user, password))
+                {
+                    client.Connect();
+                    if (client.IsConnected)
+                    {
+                                                
+                        var sshCommand = client.CreateCommand(command);
+                        var result = sshCommand.Execute();
+
+                        string[] lines = result.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                        Console.ForegroundColor = ConsoleColor.Blue;
+                        Console.Clear();
+                        if (lines.Length >= 2)
+                        {
+                            Console.WriteLine($"Panel: {lines[1].Trim()}");
+                            Console.WriteLine($"IP: {host}");
+                            Console.WriteLine($"Cantidad de Clientes: {lines[0]}");
+                            Console.ResetColor();
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                            Console.WriteLine("Presione alguna Tecla para Continuar...");
+                            Console.ResetColor();
+                            Console.ReadKey();
+
+                        }
+                            
+                    }
+                    else
+                    {
+                        Console.WriteLine("No se pudo establecer la conexión.");
+                        Console.ReadKey();
+                    }
+
+                    
+                    client.Disconnect();
+                    
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor= ConsoleColor.Red;
+                Console.WriteLine("\nError: " + ex.Message);
+                Console.ResetColor();
+                Console.ReadKey();
+            }
+        }
+
+
+            
+            
+        
+        
+
+    }
+
+    static string ReadPassword()
+    {
+        string password = string.Empty;
+        ConsoleKeyInfo key;
+
+       
+        do
+        {
+            key = Console.ReadKey(true); 
+
+            
+            if (key.Key == ConsoleKey.Backspace)
+            {
+                if (password.Length > 0)
+                {
+                    password = password[..^1]; 
+                    Console.Write("\b \b"); 
+                }
+            }
+            
+            else if (key.Key != ConsoleKey.Enter)
+            {
+                password += key.KeyChar; 
+                Console.Write("*");
+            }
+        }
+        while (key.Key != ConsoleKey.Enter); 
+
+        return password;
     }
 
     [STAThread]
