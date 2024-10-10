@@ -168,7 +168,7 @@ class Program
             process.WaitForExit();
           
 
-            Console.WriteLine($"La hora ha sido establecida a {nuevaHora}.");
+            
         }
         catch (Exception ex)
         {
@@ -181,7 +181,7 @@ class Program
         Dictionary<int, string> ip_device = new Dictionary<int, string>();
         ip_device.Add(1, "192.168.1.20");
         ip_device.Add(2, "192.168.88.1");
-        ip_device.Add(3, "192.168.1.100");
+        ip_device.Add(3, "192.168.100.1");
         int opcion;
         while (true)
         {
@@ -331,7 +331,7 @@ class Program
 
             if (HacerPing(direccion))
             {
-                return true; // Salir si el ping es exitoso
+                return true; 
             }
             else
             {
@@ -359,78 +359,82 @@ class Program
     static void CargarBackup()
     {
         Console.Clear();
+        Console.WriteLine("MENU DE BACKUP\n");
+        Console.ForegroundColor= ConsoleColor.Green;
+        Console.WriteLine("1) Cargar Backup");
+        Console.WriteLine("2) Volver al Menu Principal\n");
+        Console.ResetColor();
+        string option = "";
+        Console.Write("Ingrese una opción: ");
+        option = Console.ReadLine();
         
-
-        Console.WriteLine("Ingrese el tipo de tecnologia con el que hara el backup");
-        Console.WriteLine("1) M5");
-        Console.WriteLine("2) M2");
-        Console.WriteLine("3) AC");
-        Console.WriteLine("4) Volver al Menu Principal");
-        string option = Console.ReadLine();
-        string path = OpenFileDialog2();
-
-        if (path!="")
+        switch (option)
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("[+] Se Fijara la Tarjeta...");
-            Console.ResetColor();
-            MenuTarjetaRed();
 
-            Console.WriteLine("[+] Se hara prueba de conexion con la antena:\n");
-            Task.Delay(10000);
-            bool conexionExitosa = TestPing("192.168.1.20");
-
-            if (conexionExitosa)
-            {
-                bool request = Transfercfg(path);
-
-                if (request)
+            case "1":
+                string path = OpenFileDialog2();
+                if (path != "")
                 {
-                   if (SaveConfig())
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("[+] Se Fijara la Tarjeta...");
+                    Console.ResetColor();
+                    MenuTarjetaRed();
+
+                    Console.WriteLine("[+] Se hará prueba de conexión con el dispositivo:\n");
+                    Task.Delay(10000);
+                    bool conexionExitosa = TestPing("192.168.1.20");
+
+                    if (conexionExitosa)
                     {
-                        if (option  != "3")
-                        {   
-                            Console.ForegroundColor= ConsoleColor.Yellow;
-                            Console.WriteLine("[!] Se Hará El Compliance.");
-                            Console.ResetColor();
-                            Task.Delay(15000);
-                            conexionExitosa = TestPing("192.168.1.20");
-                            if (conexionExitosa)
+                        Console.WriteLine("[+] Se Transfirirá el archivo de configuración");
+                        bool request = Transfercfg(path);
+
+                        if (request)
+                        {
+                            if (SaveConfig())
                             {
-                                Task.Delay(15000);
-                               if(Compliance())
-                                {
-                                    Console.ForegroundColor = ConsoleColor.Yellow;
-                                    Console.WriteLine("Se Ha Realizado el Compliance, Esperando Por la Conexión con la Antena");
-                                    Console.ResetColor();
-                                    Task.Delay(15000);
-                                    TestPing("192.168.1.20");
-                                    
-
-                                }
+                                Console.WriteLine("Se Ha cargado Correctamente el Backup");
                             }
+
                         }
-                        
-                        
+                        else
+                        {
+                            Console.WriteLine("No se pudo transferir el archivo de configuración");
+                            Console.ReadKey();
+                            return;
+                        }
                     }
+                    else
+                    {
+                        Console.WriteLine("No se pudo establecer conexion con el dispositivo");
+                        Console.ReadKey(true);
+                        return;
+                    }
+
+
                 }
-            }
-            else
-            {
-                Console.WriteLine("No se Pudo realizar la tarea de BackUp");
-               
-            }
+                else
+                {
+                    Console.WriteLine("No se seleccionó ningun archivo de configuración");
+                }
 
-        }
-        else if (option == "4")
-        {
-            return;
+                break;
+            
+            case "2":
+                return;
 
+            default:
+                Console.WriteLine("Ingreso una opcion no valida");
+                Console.ReadKey();
+                break;
+        
         }
-        else
-        {
-            Console.WriteLine("La opcion no es válida");
-        }
+                
+
+           
+            
+        
+        
 
         Console.ReadKey(true);
     }
@@ -438,30 +442,42 @@ class Program
 
     static bool Compliance()
     {
-        Env.Load();
-        string host = Env.GetString("HOST");
-        string username = Env.GetString("USERNAME");
-        string password = Env.GetString("PASSWORD");
-        int puerto = int.Parse(Env.GetString("PORT"));
-        string comando = "touch /etc/persistent/ct && save";
-        try
-        {
-            using (var ssh = new SshClient(host, puerto, username, password))
+        bool requeset = TestPing("192.168.1.20");
+
+        if (requeset) {
+            Env.Load();
+            string host = Env.GetString("HOST");
+            string username = Env.GetString("USERNAME");
+            string password = Env.GetString("PASSWORD");
+            int puerto = int.Parse(Env.GetString("PORT"));
+            string comando = "touch /etc/persistent/ct && save";
+            try
             {
-                ssh.Connect();
-                var cmd = ssh.RunCommand(comando);
-                cmd = ssh.RunCommand("reboot");
-                ssh.Disconnect();
+                using (var ssh = new SshClient(host, puerto, username, password))
+                {
+                    ssh.Connect();
+                    var cmd = ssh.RunCommand(comando);
+                    cmd = ssh.RunCommand("reboot");
+                    ssh.Disconnect();
+                }
+                return true;
             }
-            return true;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error al ejecutar el comando SSH: {ex.Message}");
+                return false;
+            }
+
         }
-        catch (Exception ex)
+        else
         {
-            Console.WriteLine($"Error al ejecutar el comando SSH: {ex.Message}");
             return false;
         }
+        
 
     }
+
+
     static bool SaveConfig()
     {
         Env.Load();
@@ -543,16 +559,19 @@ class Program
         {
             Console.Clear();
             Console.WriteLine("MENU TARJETA DE RED\n");
-            Console.ForegroundColor = ConsoleColor.Blue;
-            Console.WriteLine("1) Fijar / Desmarcar ip (default)");
-            Console.WriteLine("2) Fijar ip en una ip Custom");
-            Console.WriteLine("3) Volver al menu principal\n");
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("1) Fijar Tarjeta (antena)");
+            Console.WriteLine("2) Fijar Tarjeta IP custom");
+            Console.WriteLine("3) Desmarcar Tarjeta");
+            Console.WriteLine("4) Volver al menu principal\n");
+           
             Console.ResetColor();
+            Console.Write("Ingrese una opción: ");
             string op = Console.ReadLine();
 
             switch (op) {
                 case "1":
-                    TarjetaRed();
+                    FijarTarjeta();
                     break;
                 case "2":
                     Console.Clear();
@@ -573,7 +592,7 @@ class Program
                         if (prefix == "24" || prefix == "22")
                         {
                             string mascara = prefix == "24" ? "255.255.255.0" : "255.255.252.0";
-                            TarjetaRed(ip, mascara);
+                            FijarTarjeta(ip, mascara);
                         }
                         else
                         {
@@ -594,6 +613,9 @@ class Program
                     }
                     break;
                 case "3":
+                    DesmarcarTarjeta();
+                    break;
+                case "4":
                     return;
                 default:
                     Console.ForegroundColor = ConsoleColor.Red;
@@ -609,46 +631,9 @@ class Program
     }
 
 
-    static void TarjetaRed(string ip="192.168.1.153", string mascarared="255.255.255.0")
-    {
-        Console.Clear();
-        string nombreInterfaz = "Ether0";
-        NetworkInterface[] interfaces = NetworkInterface.GetAllNetworkInterfaces();
-        bool usandoDHCP = false;
+   
 
-        foreach (NetworkInterface iface in interfaces)
-        {
-            if (iface.Name == nombreInterfaz)
-            {
-                IPInterfaceProperties ipProperties = iface.GetIPProperties();
-
-                if (iface.Supports(NetworkInterfaceComponent.IPv4))
-                {
-                    IPv4InterfaceProperties ipv4Properties = ipProperties.GetIPv4Properties();
-                    if (ipv4Properties != null)
-                    {
-                        usandoDHCP = ipv4Properties.IsDhcpEnabled;
-                    }
-                }
-            }
-        }
-
-        if (usandoDHCP)
-        {
-            FijarTarjeta(ip,mascarared);
-            Console.WriteLine("El comando no se ejecutó correctamente, intente nuevamente...");
-            Console.ReadKey();
-        }
-        else
-        {
-            DesmarcarTarjeta();
-            Console.WriteLine("Surgio un Error, vuelva a intentarlo...");
-            Console.ReadKey();
-        }
-    }
-
-
-    static bool FijarTarjeta(string ip, string mascaradered)
+    static bool FijarTarjeta(string ip="192.168.1.20", string mascaradered="255.255.255.0")
     {
         string comando = $"interface ip set address \"Ether0\" static {ip} {mascaradered}";
         ProcessStartInfo psi = new ProcessStartInfo
@@ -747,7 +732,7 @@ class Program
 
 
         openFileDialog.InitialDirectory = downloadsPath;
-        openFileDialog.Filter = "Todos los archivos (*.*)|*.*|Archivos de texto (*.txt)|*.txt";
+        openFileDialog.Filter = "Archivos de configuración (*.cfg)|*.cfg";
         openFileDialog.FilterIndex = 1;
         openFileDialog.RestoreDirectory = true;
 
