@@ -754,78 +754,100 @@ class Program
 
     static void CantidadClientes ()
     {
-        Console.Clear();
         string pattern = @"^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$";
-        Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine("Ingrese la IP del Panel: ");
+
+        Console.Clear();
+        Console.WriteLine("MENU CANTIDAD DE CLIENTES\n");
+        Console.ForegroundColor= ConsoleColor.Green;
+        Console.WriteLine("1) Cantidad de usuario en el cliente actual");
+        Console.WriteLine("2) Cantidad de un panel distinto");
+        Console.WriteLine("3) Volver al menu principal\n");
         Console.ResetColor();
-        string host = Console.ReadLine();
+        Console.Write("Ingrese una opcion: ");
+        string option = Console.ReadLine();
 
-        if (Regex.IsMatch(host, pattern))
+        switch (option)
         {
-            try
-            {
+            case "2":
                 Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("Ingrese la Contraseña del dispositivo: ");
+                Console.WriteLine("Ingrese la IP del Panel: ");
                 Console.ResetColor();
-                string password = ReadPassword();
-                string user = "ubnt";
-                int port = 23;
-                string command= "wstalist |grep \"mac\" |wc -l ; mca-status | grep essid | awk -F '=' '{print $2}'";
+                string host = Console.ReadLine();
 
-                using (var client = new SshClient(host, port,user, password))
+                if (Regex.IsMatch(host, pattern))
                 {
-                    client.Connect();
-                    if (client.IsConnected)
+                    try
                     {
-                                                
-                        var sshCommand = client.CreateCommand(command);
-                        var result = sshCommand.Execute();
+                        Console.ForegroundColor = ConsoleColor.Cyan;
+                        Console.WriteLine("Ingrese la Contraseña del dispositivo: ");
+                        Console.ResetColor();
+                        string password = ReadPassword();
+                        string user = "ubnt";
+                        int port = 23;
+                        string command = "wstalist |grep \"mac\" |wc -l ; mca-status | grep essid | awk -F '=' '{print $2}'";
 
-                        string[] lines = result.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
-                        Console.ForegroundColor = ConsoleColor.Blue;
-                        Console.Clear();
-                        if (lines.Length >= 2)
+                        using (var client = new SshClient(host, port, user, password))
                         {
-                            Console.Write("SSID Panel: ");
-                            Console.ForegroundColor = ConsoleColor.White;
-                            Console.Write($"{lines[1]}\n");
-                            Console.ForegroundColor = ConsoleColor.Blue;
-                            Console.Write("IP: ");
-                            Console.ForegroundColor = ConsoleColor.White;
-                            Console.Write($"{host}\n");
-                            Console.ForegroundColor = ConsoleColor.Blue;
-                            Console.Write("Cantidad de Clientes: ");
-                            Console.ForegroundColor = ConsoleColor.White;
-                            Console.Write($"{lines[0]}\n\n");
-                            Console.ResetColor();
-                            Console.ForegroundColor = ConsoleColor.Yellow;
-                            Console.WriteLine("Presione alguna Tecla para Continuar...");
-                            Console.ResetColor();
-                            Console.ReadKey();
+                            client.Connect();
+                            if (client.IsConnected)
+                            {
+
+                                var sshCommand = client.CreateCommand(command);
+                                var result = sshCommand.Execute();
+
+                                string[] lines = result.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                                Console.ForegroundColor = ConsoleColor.Blue;
+                                Console.Clear();
+                                if (lines.Length >= 2)
+                                {
+                                    Console.Write("SSID Panel: ");
+                                    Console.ForegroundColor = ConsoleColor.White;
+                                    Console.Write($"{lines[1]}\n");
+                                    Console.ForegroundColor = ConsoleColor.Blue;
+                                    Console.Write("IP: ");
+                                    Console.ForegroundColor = ConsoleColor.White;
+                                    Console.Write($"{host}\n");
+                                    Console.ForegroundColor = ConsoleColor.Blue;
+                                    Console.Write("Cantidad de Clientes: ");
+                                    Console.ForegroundColor = ConsoleColor.White;
+                                    Console.Write($"{lines[0]}\n\n");
+                                    Console.ResetColor();
+                                    Console.ForegroundColor = ConsoleColor.Yellow;
+                                    Console.WriteLine("Presione alguna Tecla para Continuar...");
+                                    Console.ResetColor();
+                                    Console.ReadKey();
+
+                                }
+
+                            }
+                            else
+                            {
+                                Console.WriteLine("No se pudo establecer la conexión.");
+                                Console.ReadKey();
+                            }
+
+
+                            client.Disconnect();
 
                         }
-                            
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        Console.WriteLine("No se pudo establecer la conexión.");
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("\nError: " + ex.Message);
+                        Console.ResetColor();
                         Console.ReadKey();
                     }
-
-                    
-                    client.Disconnect();
-                    
                 }
-            }
-            catch (Exception ex)
-            {
-                Console.ForegroundColor= ConsoleColor.Red;
-                Console.WriteLine("\nError: " + ex.Message);
-                Console.ResetColor();
+
+                return;
+            case "3":
+                return;
+            default:
+                Console.WriteLine("Ingreso una opcion no valida");
                 Console.ReadKey();
-            }
+                return;
         }
 
 
