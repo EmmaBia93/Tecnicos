@@ -609,7 +609,7 @@ class Program
     }
 
 
-    static void TarjetaRed(string ip="192.168.1.53", string mascarared="255.255.255.0")
+    static void TarjetaRed(string ip="192.168.1.153", string mascarared="255.255.255.0")
     {
         Console.Clear();
         string nombreInterfaz = "Ether0";
@@ -786,7 +786,7 @@ class Program
                 string password = ReadPassword();
                 string user = "ubnt";
                 int port = 23;
-                string command= "wstalist |grep \"mac\" |wc -l ; mca-status | grep \"deviceName=\" | sed -n 's/.*deviceName=\\([^,]*\\).*/\\1/p'";
+                string command= "wstalist |grep \"mac\" |wc -l ; mca-status | grep essid | awk -F '=' '{print $2}'";
 
                 using (var client = new SshClient(host, port,user, password))
                 {
@@ -803,9 +803,17 @@ class Program
                         Console.Clear();
                         if (lines.Length >= 2)
                         {
-                            Console.WriteLine($"Panel: {lines[1].Trim()}");
-                            Console.WriteLine($"IP: {host}");
-                            Console.WriteLine($"Cantidad de Clientes: {lines[0]}");
+                            Console.Write("SSID Panel: ");
+                            Console.ForegroundColor = ConsoleColor.White;
+                            Console.Write($"{lines[1]}\n");
+                            Console.ForegroundColor = ConsoleColor.Blue;
+                            Console.Write("IP: ");
+                            Console.ForegroundColor = ConsoleColor.White;
+                            Console.Write($"{host}\n");
+                            Console.ForegroundColor = ConsoleColor.Blue;
+                            Console.Write("Cantidad de Clientes: ");
+                            Console.ForegroundColor = ConsoleColor.White;
+                            Console.Write($"{lines[0]}\n\n");
                             Console.ResetColor();
                             Console.ForegroundColor = ConsoleColor.Yellow;
                             Console.WriteLine("Presione alguna Tecla para Continuar...");
