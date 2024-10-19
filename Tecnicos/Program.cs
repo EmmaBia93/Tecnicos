@@ -12,6 +12,8 @@ using System.Net.Http;
 using Newtonsoft.Json.Linq;
 using System.Windows.Forms;
 using System.IO;
+using System.Diagnostics;
+using System.ServiceProcess;
 using DotNetEnv;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement.StartPanel;
 using Microsoft.VisualBasic.ApplicationServices;
@@ -26,8 +28,19 @@ class Program
 {
     [DllImport("iphlpapi.dll", ExactSpelling = true)]
     private static extern int SendARP(int DestIP, int SrcIP, byte[] pMacAddr, ref uint PhyAddrLen);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr GetConsoleWindow();
+
+    [DllImport("user32.dll")]
+    static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    const int SW_MAXIMIZE = 3;
+
     static void Menu()
     {
+        IntPtr hWndConsole = GetConsoleWindow();
+        ShowWindow(hWndConsole, SW_MAXIMIZE);
         while (true)
         {
             Console.Clear();
@@ -56,6 +69,8 @@ class Program
             Console.WriteLine("║ 5) Establecer Hora                               ║");
             Console.WriteLine("║ 6) Detectar Cantidad de Clientes                 ║");
             Console.WriteLine("║ 7) Detectar Dispositivos en la red               ║");
+            Console.WriteLine("║ 8) Información de la antena del cliente          ║");
+            Console.WriteLine("║ 9) Reiniciar Cliente                             ║");
             Console.WriteLine("║ 0) Salir                                         ║");
 
            
@@ -93,21 +108,7 @@ class Program
                     }
                     break;
                 case "5":
-                    try
-                    {
-                       
-                        DateTime horaInternet = ObtenerHoraDeInternet();
-                       
-                        EstablecerHora(horaInternet);
-                        Console.ForegroundColor= ConsoleColor.Green;
-                        Console.WriteLine("Se Ha Establecido La Hora Correctamente!!!");
-                        Console.ResetColor();
-                        Console.ReadKey();
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error: {ex.Message}");
-                    }
+                    EstablecerHora();
 
                     break;
                 case "6":
@@ -122,11 +123,17 @@ class Program
                     InfoCliente();
                     Console.ReadKey(true);
                     break;
+
+                case "9":
+                    ReiniciarCliente();
+                    break;
+
                 case "0":
                     Console.ForegroundColor = ConsoleColor.Yellow;
                     Console.WriteLine("Saliendo...");
                     Console.ResetColor();
                     return;
+
                 default:
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine("Opción no válida. Presione una tecla para continuar...");
@@ -139,30 +146,93 @@ class Program
 
 
 
-    
-
-    static DateTime ObtenerHoraDeInternet()
+    public static bool SyncTime()
     {
-        using (HttpClient client = new HttpClient())
+        try
         {
-            
-            string url = "http://worldtimeapi.org/api/timezone/America/Argentina/San_Juan";
+            Process process = new Process();
+            process.StartInfo.FileName = "w32tm";
+            process.StartInfo.Arguments = "/resync";
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.CreateNoWindow = true;
+            process.StartInfo.UseShellExecute = false;
+            process.Start();
+            process.WaitForExit();
 
-            HttpResponseMessage response = client.GetAsync(url).Result;
-            response.EnsureSuccessStatusCode();
-
-            string jsonResponse = response.Content.ReadAsStringAsync().Result;
-            JObject json = JObject.Parse(jsonResponse);
-
-            string datetimeString = json["datetime"].ToString();
-            DateTime horaLocal = DateTime.Parse(datetimeString);
-
-           
-
-           
-            return horaLocal;
+            return process.ExitCode == 0;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
+
+    public static bool IsW32tmServiceRunning()
+    {
+        try
+        {
+            ServiceController sc = new ServiceController("w32time");
+            return sc.Status == ServiceControllerStatus.Running;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    public static void StartW32tmService()
+    {
+        try
+        {
+            ServiceController sc = new ServiceController("w32time");
+            if (sc.Status == ServiceControllerStatus.Stopped)
+            {
+                sc.Start();
+                sc.WaitForStatus(ServiceControllerStatus.Running);
+            }
+        }
+        catch (Exception)
+        {
+            
+        }
+    }
+
+    public static void EstablecerHora()
+    {
+        Console.Clear();
+        Console.WriteLine("---- HORA ----");
+
+        Console.WriteLine("Se establecerá la hora...");
+
+        if (IsW32tmServiceRunning())
+        {
+            if (SyncTime())
+            {
+                Console.WriteLine("Se estableció correctamente la hora. Presione Enter para continuar.");
+            }
+            else
+            {
+                Console.WriteLine("No se pudo establecer la hora. Presione Enter para continuar.");
+            }
+        }
+        else
+        {
+            StartW32tmService();
+            if (SyncTime())
+            {
+                Console.WriteLine("Se estableció correctamente la hora. Presione Enter para continuar.");
+            }
+            else
+            {
+                Console.WriteLine("No se pudo establecer la hora. Presione Enter para continuar.");
+            }
+        }
+
+        Console.ReadKey();
+    }
+
+
 
     static void EstablecerHora(DateTime hora)
     {
@@ -198,7 +268,7 @@ class Program
         Dictionary<int, string> ip_device = new Dictionary<int, string>();
         ip_device.Add(1, "192.168.1.20");
         ip_device.Add(2, "192.168.88.1");
-        ip_device.Add(3, "192.168.100.1");
+        ip_device.Add(3, "192.168.1.100");
         int opcion;
         while (true)
         {
@@ -267,6 +337,34 @@ class Program
     }
 
 
+    static void ReiniciarCliente()
+    {
+        if (TestPing("192.168.1.20"))
+        {
+            Env.Load();
+            string command = "reboot";
+            string request = ExcecuteCommand(command : command,password : Env.GetString("PASSWORD"));
+
+            if (request != null) {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("Se ha reiniciado con exito al cliente");
+            }
+            else
+            {
+                Console.ForegroundColor= ConsoleColor.Red;
+                Console.WriteLine("No se ha podido reiniciar al cliente");
+            }
+
+
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("No hay conexion con la antena");
+        }
+        Console.ResetColor();
+        return;
+    }
     static void SendPing(string direccion)
     {
 
@@ -339,31 +437,44 @@ class Program
         }
     }
     static bool TestPing(string direccion)
-
     {
-
         int maxIntentos = 5;
         for (int intento = 1; intento <= maxIntentos; intento++)
         {
-
-            if (HacerPing(direccion))
+            try
             {
-                return true; 
+                if (HacerPing(direccion))
+                {
+                    return true;
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"Intento {intento} fallido. Reintentando en 10 segundos...");
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+
+                    for (int i = 10; i >= 0; i--)
+                    {
+                        Console.Write($"\rReintentando en {i} segundos...");
+                        Thread.Sleep(1000);
+                    }
+
+                    Console.WriteLine();
+                    Console.ResetColor();
+                }
             }
-            else
+            catch (PingException ex)
             {
                 Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"Intento {intento} fallido. Reintentando en 10 segundos...");
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                for (int i = 10; i >= 0; i--)
-                {
-                    Console.Write($"\rReintentando en {i} segundos...");
-                    Task.Delay(1000);
-
-                }
-
-                Console.WriteLine();
+                Console.WriteLine($"Error al hacer ping: {ex.Message}. Intento {intento} fallido.");
                 Console.ResetColor();
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"Ocurrió un error inesperado: {ex.Message}");
+                Console.ResetColor();
+                return false;  // Si ocurre otro tipo de excepción, salir de la función
             }
         }
         return false;
@@ -395,11 +506,11 @@ class Program
                     Console.ForegroundColor = ConsoleColor.Yellow;
                     Console.WriteLine("[+] Se Fijara la Tarjeta...");
                     Console.ResetColor();
-                    MenuTarjetaRed();
+                    FijarTarjeta();
 
                     Console.WriteLine("[+] Se hará prueba de conexión con el dispositivo:\n");
                     Task.Delay(10000);
-                    bool conexionExitosa = TestPing("192.168.1.20");
+                    bool conexionExitosa = true;
 
                     if (conexionExitosa)
                     {
@@ -588,7 +699,20 @@ class Program
 
             switch (op) {
                 case "1":
-                    FijarTarjeta();
+                    if (FijarTarjeta())
+
+                    {
+                        Console.Clear();
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("Se ha fijado la tarjeta de red Correctamente!!!");
+                    }
+                    else
+
+                    {
+                        Console.Clear();
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("No se ha podido fijar la tarjeta de red");
+                    }
                     break;
                 case "2":
                     Console.Clear();
@@ -609,7 +733,21 @@ class Program
                         if (prefix == "24" || prefix == "22")
                         {
                             string mascara = prefix == "24" ? "255.255.255.0" : "255.255.252.0";
-                            FijarTarjeta(ip, mascara);
+                            if(FijarTarjeta(ip, mascara))
+                            {
+
+                                Console.Clear();
+                                Console.ForegroundColor = ConsoleColor.Green;
+                                Console.WriteLine("Se ha fijado la tarjeta de red Correctamente!!!");
+                            }
+                            else
+
+                            {
+                                Console.Clear();
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                Console.WriteLine("No se ha podido fijar la tarjeta de red");
+                            }
+
                         }
                         else
                         {
@@ -650,7 +788,7 @@ class Program
 
    
 
-    static bool FijarTarjeta(string ip="192.168.1.20", string mascaradered="255.255.255.0")
+    static bool FijarTarjeta(string ip="192.168.1.153", string mascaradered="255.255.255.0")
     {
         string comando = $"interface ip set address \"Ether0\" static {ip} {mascaradered}";
         ProcessStartInfo psi = new ProcessStartInfo
@@ -673,8 +811,7 @@ class Program
                 if (process.ExitCode == 0)
                 {
                     Console.ForegroundColor = ConsoleColor.Green;
-                    
-                    Console.ReadKey();
+                  
                     Console.ResetColor();
                     return true;
                 }
@@ -905,20 +1042,47 @@ class Program
 
     }
 
+    static (int, int, int, int) ConvertirSegundos(long segundos)
+    {
+        int dias = (int)(segundos / (24 * 3600));
+        segundos %= (24 * 3600);
+        int horas = (int)(segundos / 3600);
+        segundos %= 3600;
+        int minutos = (int)(segundos / 60);
+        segundos %= 60;
+
+        return (dias, horas, minutos, (int)segundos);
+    }
 
     static void InfoCliente()
 
     {
         Env.Load();
         Console.Clear();
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine("Tipo de Antena?\n");
+        Console.WriteLine("1) AirMax");
+        Console.WriteLine("2) AC");
+        Console.ResetColor();
+        Console.Write("Ingrese una opción: ");
+        string op = Console.ReadLine();
+        string pass = "";
         Console.ForegroundColor = ConsoleColor.Yellow;
         if (PingHost("192.168.1.20"))
         {
+            
+            if (op == "1")
+            {
+                pass = Env.GetString("PASSWORD");
+            } else if (op == "2") { 
+                pass = Env.GetString("PASSWORDAC");
+            }
+            Console.Clear();
             Console.WriteLine("Espere mientras se obtiene información del cliente...");
             string first_command = "mca-status | grep 'deviceName' | awk -F '[=,]' '{print $2\",\"$4\",\"$8\",\"$10}'";
-            string second_command = "mca-status | grep -E 'essid|lanSpeed|ccq|signal' | awk -F '[,=]' '{if (NR == $1) {first=$2} else {print first $2 \",\"}}'| xargs";
-            string info1 = ExcecuteCommand(host: "192.168.1.20", command: first_command, password: Env.GetString("PASSWORD"));
-            string info2 = ExcecuteCommand(host: "192.168.1.20", command: second_command, password: Env.GetString("PASSWORD"));
+            string second_command = "mca-status | grep -E 'essid|wlanPollingQuality|wlanPollingCapacity|lanSpeed|ccq|signal|uptime|distance' | awk -F '[,=]' '{if (NR == $1) {first=$2} else {print first $2 \",\"}}'| xargs";
+            string info1 = ExcecuteCommand(host: "192.168.1.20", command: first_command, password: pass);
+            string info2 = ExcecuteCommand(host: "192.168.1.20", command: second_command, password: pass);
 
             if (info1 != null && info2 != null)
             {
@@ -928,8 +1092,53 @@ class Program
                     string[] campos2 = info2.Split(",");
                     int ccq =  int.Parse(campos2[2].ToString().Trim())/10;
                     int signal = int.Parse( campos2[1].ToString().Trim().Replace("-", ""));
-                    ConsoleColor colorCCQ, colorSignal;
-                    if (ccq > 80)
+                    
+                    int calidad = int.Parse(campos2[5].ToString().Trim());
+                    int capacidad = int.Parse(campos2[6].ToString().Trim());
+                   
+
+                    (int dias, int horas, int minutos, int segundos) = ConvertirSegundos(long.Parse(campos2[3].Trim()));
+                    string time = $"{dias} días : {horas} horas : {minutos} minutos";
+
+                    float distance = int.Parse(campos2[4]) / 1000;
+                    string distance_str = $"{distance} km";
+                    ConsoleColor colorCCQ, colorSignal, colorCapacity,colorQuality;
+                    
+                    if (calidad > 60)
+                    {
+                        
+                        colorQuality = ConsoleColor.Green;
+                    }else if (calidad < 60 && calidad > 40)
+                    {
+                       
+                        colorQuality = ConsoleColor.Yellow;
+                    }
+                    else
+                    {
+                        
+                        colorQuality = ConsoleColor.Red;
+                    }
+
+
+                    if (capacidad > 60)
+                    {
+
+                        colorCapacity = ConsoleColor.Green;
+                    }
+                    else if (capacidad < 60 && capacidad > 40)
+                    {
+
+                        colorCapacity = ConsoleColor.Yellow;
+                    }
+                    else
+                    {
+
+                        colorCapacity = ConsoleColor.Red;
+                    }
+
+
+
+                    if (ccq >= 75)
                     {
                         colorCCQ = ConsoleColor.Green;
                     }
@@ -956,53 +1165,29 @@ class Program
                     }
 
                     Console.Clear();
-                    Console.WriteLine("ESTADISTICAS DEL CLIENTE");
-                    Console.ForegroundColor= ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.Yellow;
-                    Console.Write("\nCliente:");
-                    Console.ResetColor();
-                    Console.WriteLine(" "+campos1[0]+"\n");
-                    Console.ForegroundColor = ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.Yellow;
-                    Console.Write("MAC:");
-                    Console.ResetColor();
-                    Console.WriteLine(" " + campos1[1] + "\n");
-                    Console.ForegroundColor = ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.Yellow;
-                    Console.Write("Tipo de Antena:");
-                    Console.ResetColor();
-                    Console.WriteLine(" " + campos1[2] + "\n");
-                    Console.ForegroundColor = ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.Yellow;
-                    Console.Write("IP:");
-                    Console.ResetColor();
-                    Console.WriteLine(" " + campos1[3].ToString().Trim() + "\n");
-                    Console.ForegroundColor = ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.Yellow;
-                    Console.Write("Panel:");
-                    Console.ResetColor();
-                    Console.WriteLine(" " + campos2[0].ToString().Trim() + "\n");
-                    Console.ForegroundColor = ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.Yellow;
-                    Console.Write("Velocidad del cable:");
-                    Console.ResetColor();
-                    Console.ForegroundColor = campos2[3].Contains("100") ? ConsoleColor.Green : ConsoleColor.Red;
-                    Console.WriteLine(" " + campos2[3].ToString().Trim() + "\n");
-                    Console.ForegroundColor = ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.Yellow;
-                    Console.Write("CCQ:");
-                    Console.ResetColor();
-                    Console.ForegroundColor = colorCCQ;
-                    Console.WriteLine(" " + ccq + "\n");
-                    Console.ForegroundColor = ConsoleColor.Black;
-                    Console.BackgroundColor = ConsoleColor.Yellow;
-                    Console.Write("Señal:");
-                    Console.ResetColor();
-                    Console.ForegroundColor= colorSignal;
-                    Console.WriteLine(" " + signal + "\n");
-                    Console.ResetColor();
+                    Console.WriteLine("ESTADÍSTICAS DEL CLIENTE\n");
 
                     
+                    PrintHeader("Campo", "Valor");
+                    PrintDivider();
+
+                   
+                    PrintRow("Cliente:", campos1[0]);
+                    PrintRow("MAC:", campos1[1]);
+                    PrintRow("Tipo de Antena:", campos1[2]);
+                    PrintRow("IP:", campos1[3].Trim());
+                    PrintRow("Panel:", campos2[0]);
+                    PrintRowWithColor("Velocidad del cable:", campos2[7].Trim(), campos2[7].Contains("100") ? ConsoleColor.Green : ConsoleColor.Red);
+                    PrintRowWithColor("CCQ:", ccq.ToString(), colorCCQ);
+                    PrintRowWithColor("Señal:", signal.ToString(), colorSignal);
+                    PrintRowWithColor("Capacidad:", capacidad.ToString(), colorCapacity);
+                    PrintRowWithColor("Calidad:", calidad.ToString(), colorQuality);
+                    PrintRow("Tiempo Activo:",time);
+                    PrintRow("Distancia:", distance_str);
+
+                    
+                    Console.ResetColor();
+
                 }
                 catch { }
                
@@ -1019,7 +1204,34 @@ class Program
     }
 
 
+    static void PrintRow(string label, string value)
+    {
+        
+        Console.WriteLine($"{label.PadRight(20)} | {value.PadRight(30)}");
+    }
 
+    static void PrintRowWithColor(string label, string value, ConsoleColor color)
+    {
+        
+        Console.Write($"{label.PadRight(20)} | ");
+        Console.ForegroundColor = color;
+        Console.WriteLine($"{value.PadRight(30)}");
+        Console.ResetColor();
+    }
+
+    static void PrintHeader(string col1, string col2)
+    {
+        Console.BackgroundColor = ConsoleColor.Yellow;
+        Console.ForegroundColor = ConsoleColor.Black;
+       
+        Console.WriteLine($"{col1.PadRight(20)} | {col2.PadRight(30)}");
+        Console.ResetColor();
+    }
+    static void PrintDivider()
+    {
+        
+        Console.WriteLine(new string('-', 20) + "-+-" + new string('-', 30));
+    }
     static string ExcecuteCommand(string host="192.168.1.20", string command="",string password="",int port=23,string user="ubnt")
     {
         try
@@ -1086,14 +1298,67 @@ class Program
         return password;
     }
        
+
+
+    static string GetIP()
+    {
+        string interfaceName = "Ether0"; 
+
+        foreach (NetworkInterface ni in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (ni.Name == interfaceName && ni.OperationalStatus == OperationalStatus.Up)
+            {
+                
+
+                foreach (UnicastIPAddressInformation ip in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (ip.Address.AddressFamily == AddressFamily.InterNetwork) // Solo IPv4
+                    {
+                        
+                        return ip.Address.ToString();
+
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    static string RemoveLastOctet(string ip)
+    {
+       
+        string[] octets = ip.Split('.');
+
+        if (octets.Length == 4)
+        {
+            
+            return $"{octets[0]}.{octets[1]}.{octets[2]}.";
+        }
+        else
+        {
+            throw new ArgumentException("IP no válida. Debe tener 4 octetos.");
+        }
+    }
+
     static void Discovery()
     {
-        const string baseIp = "192.168.1."; 
+        Console.Clear();
+        Console.WriteLine("MENU DE DESCUBRIMIENTO DE EQUIPOS\n");
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("Recuerde que el descubrimiento depende de la ip fijada en la tarjeta!!!");
+        
+
+        string ip_last = GetIP();
+
+        ip_last = RemoveLastOctet(ip_last);
+
+        string baseIp = ip_last;
+
         List<Tuple<string, string>> results = new List<Tuple<string, string>>();
 
         List<Thread> threads = new List<Thread>();
 
-        
+        Console.ForegroundColor= ConsoleColor.Green;
         for (int i = 1; i < 255; i++)
         {
             string ip = baseIp + i.ToString();
@@ -1117,6 +1382,8 @@ class Program
             Console.WriteLine($"{result.Item1,-20} | {result.Item2,-20}");
         }
         Console.WriteLine($"{new string('-', 40)}");
+
+        Console.ResetColor();
     }
 
 
@@ -1128,7 +1395,7 @@ class Program
             string mac = GetMacAddress(ipAddress);
             if (!string.IsNullOrEmpty(mac))
             {
-                lock (results) // Bloquear acceso a la lista de resultados para evitar condiciones de carrera
+                lock (results) 
                 {
                     results.Add(new Tuple<string, string>(ipAddress, mac));
                 }
@@ -1142,7 +1409,7 @@ class Program
         {
             try
             {
-                var reply = ping.Send(ipAddress, 100); // Timeout de 100 ms
+                var reply = ping.Send(ipAddress, 100);
                 return reply.Status == System.Net.NetworkInformation.IPStatus.Success;
             }
             catch
@@ -1159,12 +1426,12 @@ class Program
         uint macAddrLen = (uint)macAddr.Length;
 
         int result = SendARP((int)BitConverter.ToInt32(ipAddr.GetAddressBytes(), 0), 0, macAddr, ref macAddrLen);
-        if (result == 0) // Si el resultado es 0, significa que la llamada fue exitosa
+        if (result == 0)
         {
             return BitConverter.ToString(macAddr).Replace("-", ":");
         }
 
-        return null; // No se encontró la dirección MAC
+        return null;
     }
 
 
